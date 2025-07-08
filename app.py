@@ -175,16 +175,31 @@ if st.button("🔎 Run PubMed Search"):
             st.bar_chart(journal_counts)
             st.dataframe(journal_counts.reset_index().rename(columns={"index": "Journal", "Journal": "Count"}))
 
-            # 2. Articles per Institution
-            st.subheader("🏥 Articles mentioning Renowned Institutions")
-            inst_counter = Counter()
+            # 2A. Renowned Institutions (subset)
+            st.subheader("🏅 Renowned Institutions Mencionadas")
+            inst_counter_renowned = Counter()
             for aff in df["Affiliations"]:
                 for inst in institutions:
                     if inst.lower() in aff.lower():
-                        inst_counter[inst] += 1
-            inst_df = pd.DataFrame(inst_counter.items(), columns=["Institution", "Count"]).sort_values("Count", ascending=False)
-            st.bar_chart(inst_df.set_index("Institution"))
-            st.dataframe(inst_df)
+                        inst_counter_renowned[inst] += 1
+            if inst_counter_renowned:
+                inst_df_renowned = pd.DataFrame(inst_counter_renowned.items(), columns=["Institution", "Count"]).sort_values("Count", ascending=False)
+                st.bar_chart(inst_df_renowned.set_index("Institution"))
+                st.dataframe(inst_df_renowned)
+            else:
+                st.info("Nenhuma instituição renomada foi mencionada nos artigos.")
+
+            # 2B. Todas as Instituições
+            st.subheader("🌍 Todas as Instituições Mencionadas")
+            all_affiliations = []
+            for aff in df["Affiliations"]:
+                aff_split = [a.strip() for a in aff.split(";") if a.strip()]
+                all_affiliations.extend(aff_split)
+
+            inst_counter_all = Counter(all_affiliations)
+            inst_df_all = pd.DataFrame(inst_counter_all.items(), columns=["Institution", "Count"]).sort_values("Count", ascending=False)
+            st.bar_chart(inst_df_all.set_index("Institution"))
+            st.dataframe(inst_df_all)
 
             # 3. Articles per Publication Type
             st.subheader("📄 Articles per Publication Type")
