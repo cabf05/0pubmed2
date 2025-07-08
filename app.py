@@ -165,5 +165,44 @@ if st.button("🔎 Run PubMed Search"):
             )
             csv = df.to_csv(index=False)
             st.download_button("⬇️ Download CSV", data=csv, file_name="ranked_pubmed_results.csv", mime="text/csv")
+                    # -------------------- Summary Section --------------------
+        st.header("📊 Summary Analysis")
+
+        # 1. Articles per Journal
+        st.subheader("🔬 Articles per Journal")
+        journal_counts = df['Journal'].value_counts()
+        st.bar_chart(journal_counts)
+        st.dataframe(journal_counts.reset_index().rename(columns={"index": "Journal", "Journal": "Count"}))
+
+        # 2. Articles per Institution (affiliation match)
+        st.subheader("🏥 Articles mentioning Renowned Institutions")
+        from collections import Counter
+        inst_counter = Counter()
+        for aff in df["Affiliations"]:
+            for inst in institutions:
+                if inst.lower() in aff.lower():
+                    inst_counter[inst] += 1
+        inst_df = pd.DataFrame(inst_counter.items(), columns=["Institution", "Count"]).sort_values("Count", ascending=False)
+        st.bar_chart(inst_df.set_index("Institution"))
+        st.dataframe(inst_df)
+
+        # 3. Articles per Publication Type
+        st.subheader("📄 Articles per Publication Type")
+        from itertools import chain
+        pubtype_list = list(chain.from_iterable([pt.split("; ") for pt in df["Publication Types"]]))
+        pubtype_counts = pd.Series(pubtype_list).value_counts()
+        st.bar_chart(pubtype_counts)
+        st.dataframe(pubtype_counts.reset_index().rename(columns={"index": "Publication Type", 0: "Count"}))
+
+        # 4. Articles per Hot Keyword
+        st.subheader("🔥 Articles with Hot Keywords in Title")
+        hot_kw_counter = Counter()
+        for title in df["Title"]:
+            for kw in hot_keywords:
+                if kw in title.lower():
+                    hot_kw_counter[kw] += 1
+        hot_df = pd.DataFrame(hot_kw_counter.items(), columns=["Hot Keyword", "Count"]).sort_values("Count", ascending=False)
+        st.bar_chart(hot_df.set_index("Hot Keyword"))
+        st.dataframe(hot_df)
         else:
             st.warning("No valid articles found to display.")
