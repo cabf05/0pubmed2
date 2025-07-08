@@ -123,7 +123,14 @@ if st.button("🔎 Run PubMed Search"):
                     affs = [aff.text.strip() for aff in article.findall(".//AffiliationInfo/Affiliation") if aff is not None]
                     aff_text = "; ".join(affs)
                     aff_lower = [a.lower() for a in affs]
-                    abstract = article.findtext(".//Abstract/AbstractText") or "N/A"
+
+                    # CORREÇÃO: juntar todo o abstract
+                    abstract_texts = article.findall(".//Abstract/AbstractText")
+                    if abstract_texts:
+                        abstract = "\n".join([elem.text.strip() if elem.text else "" for elem in abstract_texts])
+                    else:
+                        abstract = "N/A"
+
                     pub_types = [pt.text for pt in article.findall(".//PublicationType")]
                     pub_types_text = "; ".join(pub_types)
                     citation = build_citation(article)
