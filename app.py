@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
+import re
 from collections import Counter
 from itertools import chain
 
@@ -36,6 +37,20 @@ hot_keywords = [k.strip().lower() for k in hot_input.strip().split("\n") if k.st
 
 max_results = st.number_input("Max number of articles to fetch", min_value=10, max_value=1000, value=250, step=10)
 
+# -------------------- Utility Functions --------------------
+def normalize_text(text):
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+def match_renowned_institution(text, institution_list):
+    text = normalize_text(text)
+    for inst in institution_list:
+        if re.search(rf"\b{re.escape(inst.lower())}\b", text):
+            return True
+    return False
+
+def split_affiliations(raw_aff):
+    return [normalize_text(part) for part in re.split(r"[;,]", raw_aff) if part.strip()]
+
 # -------------------- Search and Processing --------------------
 if st.button("🔎 Run PubMed Search"):
     with st.spinner("Fetching articles..."):
@@ -62,7 +77,7 @@ if st.button("🔎 Run PubMed Search"):
         parsed_fail = 0
         records = []
 
-        def score_article(article, aff_texts, title_text):
+        def score_article(article, aff_parts, title_text):
             score = 0
             reasons = []
 
@@ -82,7 +97,7 @@ if st.button("🔎 Run PubMed Search"):
                 score += 1
                 reasons.append("Multiple authors (+1)")
 
-            if any(inst in aff for aff in aff_texts for inst in institutions):
+            if any(match_renowned_institution(aff, institutions) for aff in aff_parts):
                 score += 1
                 reasons.append("Prestigious institution (+1)")
 
@@ -117,13 +132,14 @@ if st.button("🔎 Run PubMed Search"):
                 try:
                     pmid = article.findtext(".//PMID")
                     title = article.findtext(".//ArticleTitle", "")
-                    title_lower = title.lower()
+                    title_lower = normalize_text(title)
                     link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
                     journal = article.findtext(".//Journal/Title", "")
                     date = article.findtext(".//PubDate/Year") or article.findtext(".//PubDate/MedlineDate") or "N/A"
-                    affs = [aff.text.strip() for aff in article.findall(".//AffiliationInfo/Affiliation") if aff is not None]
-                    aff_text = "; ".join(affs)
-                    aff_lower = [a.lower() for a in affs]
+
+                    affs_raw = [aff.text.strip() for aff in article.findall(".//AffiliationInfo/Affiliation") if aff is not None]
+                    aff_text = "; ".join(affs_raw)
+                    aff_parts = list(chain.from_iterable([split_affiliations(a) for a in affs_raw]))
 
                     abstract_texts = article.findall(".//Abstract/AbstractText")
                     if abstract_texts:
@@ -135,7 +151,7 @@ if st.button("🔎 Run PubMed Search"):
                     pub_types_text = "; ".join(pub_types)
                     citation = build_citation(article)
 
-                    score, reason = score_article(article, aff_lower, title_lower)
+                    score, reason = score_article(article, aff_parts, title_lower)
                     records.append({
                         "Title": title,
                         "Link": link,
@@ -169,55 +185,54 @@ if st.button("🔎 Run PubMed Search"):
             # -------------------- Summary Section --------------------
             st.header("📊 Summary Analysis")
 
-            # 1. Articles per Journal
+            # Articles per Journal
             st.subheader("🔬 Articles per Journal")
             journal_counts = df['Journal'].value_counts()
             st.bar_chart(journal_counts)
             st.dataframe(journal_counts.reset_index().rename(columns={"index": "Journal", "Journal": "Count"}))
 
-            # 2A. Renowned Institutions (subset)
-            st.subheader("🏅 Renowned Institutions Mencionadas")
+            # Renowned Institutions
+            st.subheader("🏅 Renowned Institutions Mentioned")
             inst_counter_renowned = Counter()
             for aff in df["Affiliations"]:
+                aff_parts = split_affiliations(aff)
                 for inst in institutions:
-                    if inst.lower() in aff.lower():
-                        inst_counter_renowned[inst] += 1
+                    for part in aff_parts:
+                        if re.search(rf"\b{re.escape(inst.lower())}\b", part):
+                            inst_counter_renowned[inst] += 1
             if inst_counter_renowned:
                 inst_df_renowned = pd.DataFrame(inst_counter_renowned.items(), columns=["Institution", "Count"]).sort_values("Count", ascending=False)
                 st.bar_chart(inst_df_renowned.set_index("Institution"))
                 st.dataframe(inst_df_renowned)
             else:
-                st.info("Nenhuma instituição renomada foi mencionada nos artigos.")
+                st.info("No renowned institutions were mentioned in the articles.")
 
-            # 2B. Todas as Instituições
-            st.subheader("🌍 Todas as Instituições Mencionadas")
+            # All Institutions
+            st.subheader("🌍 All Institutions Mentioned")
             all_affiliations = []
             for aff in df["Affiliations"]:
-                aff_split = [a.strip() for a in aff.split(";") if a.strip()]
-                all_affiliations.extend(aff_split)
-
+                all_affiliations.extend(split_affiliations(aff))
             inst_counter_all = Counter(all_affiliations)
             inst_df_all = pd.DataFrame(inst_counter_all.items(), columns=["Institution", "Count"]).sort_values("Count", ascending=False)
             st.bar_chart(inst_df_all.set_index("Institution"))
             st.dataframe(inst_df_all)
 
-            # 3. Articles per Publication Type
+            # Publication Types
             st.subheader("📄 Articles per Publication Type")
             pubtype_list = list(chain.from_iterable([pt.split("; ") for pt in df["Publication Types"]]))
             pubtype_counts = pd.Series(pubtype_list).value_counts()
             st.bar_chart(pubtype_counts)
             st.dataframe(pubtype_counts.reset_index().rename(columns={"index": "Publication Type", 0: "Count"}))
 
-            # 4. Articles per Hot Keyword
+            # Hot Keywords in Titles
             st.subheader("🔥 Articles with Hot Keywords in Title")
             hot_kw_counter = Counter()
             for title in df["Title"]:
                 for kw in hot_keywords:
-                    if kw in title.lower():
+                    if kw in normalize_text(title):
                         hot_kw_counter[kw] += 1
             hot_df = pd.DataFrame(hot_kw_counter.items(), columns=["Hot Keyword", "Count"]).sort_values("Count", ascending=False)
             st.bar_chart(hot_df.set_index("Hot Keyword"))
             st.dataframe(hot_df)
-
         else:
             st.warning("No valid articles found to display.")
