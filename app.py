@@ -144,13 +144,12 @@ if st.button("🔎 Run PubMed Search"):
         records = []
 
         def score_article(article, aff_parts, title_text):
-            score = 0; reasons = []
+            score, reasons = 0, []
             journal = article.findtext(".//Journal/Title","").lower()
             if any(j in journal for j in journals):
                 score+=2; reasons.append("High-impact journal (+2)")
             pub_types = [pt.text.lower() for pt in article.findall(".//PublicationType")]
-            valued = ["randomized controlled trial","systematic review",
-                     "meta-analysis","guideline","practice guideline"]
+            valued = ["randomized controlled trial","systematic review","meta-analysis","guideline","practice guideline"]
             if any(pt in valued for pt in pub_types):
                 score+=2; reasons.append("Valued publication type (+2)")
             if len(article.findall(".//Author"))>=5:
@@ -166,37 +165,37 @@ if st.button("🔎 Run PubMed Search"):
         def build_citation(article):
             authors = article.findall(".//Author")
             if authors:
-                first=authors[0]
-                last=first.findtext("LastName","")
-                init=first.findtext("Initials","")
-                auth=f"{last} {init}" if last else "Unknown Author"
+                first = authors[0]
+                last = first.findtext("LastName","")
+                init = first.findtext("Initials","")
+                auth = f"{last} {init}" if last else "Unknown Author"
             else:
-                auth="Unknown Author"
-            year=article.findtext(".//PubDate/Year") or "n.d."
-            title=article.findtext(".//ArticleTitle","").strip()
-            journal=article.findtext(".//Journal/Title","")
+                auth = "Unknown Author"
+            year = article.findtext(".//PubDate/Year") or "n.d."
+            title = article.findtext(".//ArticleTitle","").strip()
+            journal = article.findtext(".//Journal/Title","")
             return f"{auth} et al. ({year}). {title}. {journal}."
 
         try:
-            root=ET.fromstring(response.content)
+            root = ET.fromstring(response.content)
             for art in root.findall(".//PubmedArticle"):
                 try:
-                    pmid=art.findtext(".//PMID")
-                    title=art.findtext(".//ArticleTitle","") or ""
-                    link=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-                    journal=art.findtext(".//Journal/Title","")
-                    date=art.findtext(".//PubDate/Year") or art.findtext(".//PubDate/MedlineDate") or "N/A"
+                    pmid = art.findtext(".//PMID")
+                    title = art.findtext(".//ArticleTitle","") or ""
+                    link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+                    journal = art.findtext(".//Journal/Title","")
+                    date = art.findtext(".//PubDate/Year") or art.findtext(".//PubDate/MedlineDate") or "N/A"
 
-                    raw_affs=[a.text for a in art.findall(".//AffiliationInfo/Affiliation") if a.text]
-                    aff_text="; ".join(raw_affs)
-                    aff_parts=split_affiliations(aff_text, institutions)
+                    raw_affs = [a.text for a in art.findall(".//AffiliationInfo/Affiliation") if a.text]
+                    aff_text = "; ".join(raw_affs)
+                    aff_parts = split_affiliations(aff_text, institutions)
 
-                    abstract_elems=art.findall(".//Abstract/AbstractText")
-                    abstract="\n".join(e.text.strip() for e in abstract_elems if e.text) if abstract_elems else "N/A"
+                    abstract_elems = art.findall(".//Abstract/AbstractText")
+                    abstract = "\n".join(e.text.strip() for e in abstract_elems if e.text) if abstract_elems else "N/A"
 
-                    pub_types=[pt.text for pt in art.findall(".//PublicationType")]
-                    pub_types_text="; ".join(pub_types)
-                    citation=build_citation(art)
+                    pub_types = [pt.text for pt in art.findall(".//PublicationType")]
+                    pub_types_text = "; ".join(pub_types)
+                    citation = build_citation(art)
 
                     score, reason = score_article(art, aff_parts, normalize_text(title))
                     records.append({
@@ -226,7 +225,6 @@ if st.button("🔎 Run PubMed Search"):
                 "Title","Journal","Date","Publication Types","Affiliations",
                 "Score","Why","Citation","Abstract"
             ]], use_container_width=True)
-
             st.download_button(
                 "⬇️ Download CSV",
                 data=df.drop(columns="AffParts").to_csv(index=False),
@@ -236,55 +234,55 @@ if st.button("🔎 Run PubMed Search"):
 
             st.header("📊 Summary Analysis")
 
-            # Articles per Journal
+            # 🔬 Articles per Journal
             st.subheader("🔬 Articles per Journal")
             jc = df['Journal'].value_counts()
             st.bar_chart(jc)
             st.dataframe(jc.reset_index().rename(columns={"index":"Journal","Journal":"Count"}))
 
-            # Renowned Institutions Mentioned
-            st.subheader("🏅 Renowned Institutions Mentioned")
+            # 🏅 Renowned Institutions Summary
+            st.subheader("🏅 Renowned Institutions Summary")
             ren_counter = Counter()
             for parts in df["AffParts"]:
-                for inst in institutions:
-                    if any(inst in p for p in parts):
+                match = [inst for inst in institutions if any(inst in p for p in parts)]
+                if match:
+                    for inst in set(match):
                         ren_counter[inst] += 1
-            if ren_counter:
-                ren_df = (
-                    pd.DataFrame.from_dict(ren_counter, orient="index", columns=["Count"])
-                      .rename_axis("Institution")
-                      .sort_values("Count", ascending=False)
-                )
-                st.bar_chart(ren_df)
-                st.dataframe(ren_df.reset_index())
-            else:
-                st.info("No renowned institutions found in affiliations.")
-
-            # Institutions Summary (use summary list, Others bucket)
-            st.subheader("📈 Institutions Summary")
-            sum_counter = Counter()
-            for parts in df["AffParts"]:
-                matched = {inst for inst in summary_institutions if any(inst in p for p in parts)}
-                if matched:
-                    for inst in matched:
-                        sum_counter[inst] += 1
                 else:
-                    sum_counter["Others"] += 1
-            sum_df = (
-                pd.DataFrame.from_dict(sum_counter, orient="index", columns=["Count"])
+                    ren_counter["Others"] += 1
+            ren_df = (
+                pd.DataFrame.from_dict(ren_counter, orient="index", columns=["Count"])
                   .rename_axis("Institution")
                   .sort_values("Count", ascending=False)
             )
-            st.bar_chart(sum_df)
-            st.dataframe(sum_df.reset_index())
+            st.bar_chart(ren_df)
+            st.dataframe(ren_df.reset_index())
 
-            # Publication Types
+            # 🏅 Selected Institutions Summary
+            st.subheader("🏅 Selected Institutions Summary")
+            sel_counter = Counter()
+            for parts in df["AffParts"]:
+                match = [inst for inst in summary_institutions if any(inst in p for p in parts)]
+                if match:
+                    for inst in set(match):
+                        sel_counter[inst] += 1
+                else:
+                    sel_counter["Others"] += 1
+            sel_df = (
+                pd.DataFrame.from_dict(sel_counter, orient="index", columns=["Count"])
+                  .rename_axis("Institution")
+                  .sort_values("Count", ascending=False)
+            )
+            st.bar_chart(sel_df)
+            st.dataframe(sel_df.reset_index())
+
+            # 📄 Publication Types
             st.subheader("📄 Articles per Publication Type")
             pt = df["Publication Types"].str.split("; ").explode().value_counts()
             st.bar_chart(pt)
             st.dataframe(pt.reset_index().rename(columns={"index":"Publication Type",0:"Count"}))
 
-            # Hot Keywords in Titles
+            # 🔥 Hot Keywords in Titles
             st.subheader("🔥 Articles with Hot Keywords in Title")
             hk = Counter()
             for title in df["Title"]:
