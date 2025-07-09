@@ -22,15 +22,15 @@ journal_input = st.text_area("High-Impact Journals (one per line)", value=defaul
 journals = [j.strip().lower() for j in journal_input.splitlines() if j.strip()]
 
 default_institutions = "\n".join([
-    "Harvard University", "Oxford University", "Mayo Clinic", "NIH", "Stanford University",
-    "UCSF", "Yale University", "Cambridge University", "Karolinska Institute", "Johns Hopkins University"
+    "Harvard", "Oxford", "Mayo", "NIH", "Stanford",
+    "UCSF", "Yale", "Cambridge", "Karolinska Institute", "Johns Hopkins"
 ])
 inst_input = st.text_area("Renowned Institutions (one per line)", value=default_institutions, height=150)
 institutions = [i.strip().lower() for i in inst_input.splitlines() if i.strip()]
 
 default_summary = "\n".join([
-    "Harvard University",
-    "Stanford University",
+    "Harvard",
+    "Stanford",
     "Massachusetts Institute of Technology",
     "University of Cambridge",
     "University of Oxford",
@@ -38,7 +38,7 @@ default_summary = "\n".join([
     "Princeton University",
     "Yale University",
     "University of Chicago",
-    "Columbia University",
+    "Columbia",
     "California Institute of Technology",
     "University College London",
     "ETH Zurich",
@@ -66,7 +66,7 @@ default_summary = "\n".join([
     "École Polytechnique Fédérale de Lausanne",
     "University of Pennsylvania",
     "Cornell University",
-    "Johns Hopkins University",
+    "Johns Hopkins",
     "Duke University",
     "University of California, Los Angeles",
     "University of Michigan",
@@ -258,8 +258,8 @@ if st.button("🔎 Run PubMed Search"):
             st.bar_chart(ren_df)
             st.dataframe(ren_df.reset_index())
 
-            # 🏅 Selected Institutions Summary
-            st.subheader("🏅 Selected Institutions Summary")
+            # Selected Institutions Summary
+            st.subheader("Selected Institutions Summary")
             sel_counter = Counter()
             for parts in df["AffParts"]:
                 match = [inst for inst in summary_institutions if any(inst in p for p in parts)]
