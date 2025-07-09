@@ -49,10 +49,10 @@ INSTITUTION_KEYWORDS = [
 
 def split_affiliations(raw_aff, institution_list):
     """
-    Extrai apenas partes de afiliação que correspondem a 
+    Extrai apenas partes de afiliação separadas por ';' que correspondem a 
     instituições (pelas suas próprias listas ou por keywords).
     """
-    parts = re.split(r"[;,\.]", raw_aff or "")
+    parts = (raw_aff or "").split(";")
     filtered = []
     for part in parts:
         text = normalize_text(part)
