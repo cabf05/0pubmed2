@@ -242,8 +242,26 @@ if st.button("🔎 Run PubMed Search"):
             st.bar_chart(jc)
             st.dataframe(jc.reset_index().rename(columns={"index":"Journal","Journal":"Count"}))
 
-            # Institutions Summary with "Others"
-            st.subheader("🏅 Institutions Summary")
+            # Renowned Institutions Mentioned
+            st.subheader("🏅 Renowned Institutions Mentioned")
+            ren_counter = Counter()
+            for parts in df["AffParts"]:
+                for inst in institutions:
+                    if any(inst in p for p in parts):
+                        ren_counter[inst] += 1
+            if ren_counter:
+                ren_df = (
+                    pd.DataFrame.from_dict(ren_counter, orient="index", columns=["Count"])
+                      .rename_axis("Institution")
+                      .sort_values("Count", ascending=False)
+                )
+                st.bar_chart(ren_df)
+                st.dataframe(ren_df.reset_index())
+            else:
+                st.info("No renowned institutions found in affiliations.")
+
+            # Institutions Summary (use summary list, Others bucket)
+            st.subheader("📈 Institutions Summary")
             sum_counter = Counter()
             for parts in df["AffParts"]:
                 matched = {inst for inst in summary_institutions if any(inst in p for p in parts)}
@@ -259,20 +277,6 @@ if st.button("🔎 Run PubMed Search"):
             )
             st.bar_chart(sum_df)
             st.dataframe(sum_df.reset_index())
-
-            # All Institutions Mentioned
-            st.subheader("🌍 All Institutions Mentioned")
-            all_counts = Counter()
-            for parts in df["AffParts"]:
-                for p in parts:
-                    all_counts[p] += 1
-            all_df = (
-                pd.DataFrame.from_dict(all_counts, orient="index", columns=["Count"])
-                  .rename_axis("Institution")
-                  .sort_values("Count", ascending=False)
-            )
-            st.bar_chart(all_df)
-            st.dataframe(all_df.reset_index())
 
             # Publication Types
             st.subheader("📄 Articles per Publication Type")
