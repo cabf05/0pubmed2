@@ -19,20 +19,79 @@ default_journals = "\n".join([
     "N Engl J Med", "JAMA", "BMJ", "Lancet", "Nature", "Science", "Cell"
 ])
 journal_input = st.text_area("High-Impact Journals (one per line)", value=default_journals, height=150)
-journals = [j.strip().lower() for j in journal_input.strip().split("\n") if j.strip()]
+journals = [j.strip().lower() for j in journal_input.splitlines() if j.strip()]
 
 default_institutions = "\n".join([
-    "Harvard", "Oxford", "Mayo Clinic", "NIH", "Stanford",
-    "UCSF", "Yale", "Cambridge", "Karolinska", "Johns Hopkins"
+    "Harvard University", "Oxford University", "Mayo Clinic", "NIH", "Stanford University",
+    "UCSF", "Yale University", "Cambridge University", "Karolinska Institute", "Johns Hopkins University"
 ])
 inst_input = st.text_area("Renowned Institutions (one per line)", value=default_institutions, height=150)
-institutions = [i.strip().lower() for i in inst_input.strip().split("\n") if i.strip()]
+institutions = [i.strip().lower() for i in inst_input.splitlines() if i.strip()]
+
+default_summary = "\n".join([
+    "Harvard University",
+    "Stanford University",
+    "Massachusetts Institute of Technology",
+    "University of Cambridge",
+    "University of Oxford",
+    "University of California, Berkeley",
+    "Princeton University",
+    "Yale University",
+    "University of Chicago",
+    "Columbia University",
+    "California Institute of Technology",
+    "University College London",
+    "ETH Zurich",
+    "Imperial College London",
+    "University of Toronto",
+    "Tsinghua University",
+    "Peking University",
+    "National University of Singapore",
+    "University of Melbourne",
+    "University of Tokyo",
+    "Kyoto University",
+    "Seoul National University",
+    "University of Hong Kong",
+    "University of British Columbia",
+    "University of Sydney",
+    "University of Edinburgh",
+    "University of Manchester",
+    "Ludwig Maximilian University of Munich",
+    "University of Copenhagen",
+    "University of Amsterdam",
+    "University of Zurich",
+    "McGill University",
+    "King's College London",
+    "University of Illinois Urbana-Champaign",
+    "École Polytechnique Fédérale de Lausanne",
+    "University of Pennsylvania",
+    "Cornell University",
+    "Johns Hopkins University",
+    "Duke University",
+    "University of California, Los Angeles",
+    "University of Michigan",
+    "University of Texas at Austin",
+    "Washington University in St. Louis",
+    "University of California, San Diego",
+    "University of California, Davis",
+    "University of Washington",
+    "University of Wisconsin–Madison",
+    "New York University",
+    "University of North Carolina at Chapel Hill",
+    "National Taiwan University"
+])
+summary_input = st.text_area(
+    "Institutions for Summary Analysis (one per line)",
+    value=default_summary,
+    height=200
+)
+summary_institutions = [i.strip().lower() for i in summary_input.splitlines() if i.strip()]
 
 default_keywords = "\n".join([
     "glp-1", "semaglutide", "tirzepatide", "ai", "machine learning", "telemedicine"
 ])
 hot_input = st.text_area("Hot Keywords (one per line)", value=default_keywords, height=100)
-hot_keywords = [k.strip().lower() for k in hot_input.strip().split("\n") if k.strip()]
+hot_keywords = [k.strip().lower() for k in hot_input.splitlines() if k.strip()]
 
 max_results = st.number_input("Max number of articles to fetch", min_value=10, max_value=1000, value=250, step=10)
 
@@ -40,7 +99,6 @@ max_results = st.number_input("Max number of articles to fetch", min_value=10, m
 def normalize_text(text):
     return re.sub(r"\s+", " ", text).strip().lower()
 
-# Palavras-chave típicas de instituições
 INSTITUTION_KEYWORDS = [
     "univ", "university", "hospital", "clinic", "institute",
     "college", "center", "centre", "school", "department",
@@ -48,123 +106,97 @@ INSTITUTION_KEYWORDS = [
 ]
 
 def split_affiliations(raw_aff, institution_list):
-    """
-    Extrai apenas partes de afiliação separadas por ';' que correspondem a 
-    instituições (pelas suas próprias listas ou por keywords).
-    """
     parts = (raw_aff or "").split(";")
     filtered = []
     for part in parts:
         text = normalize_text(part)
-        # descartar trechos muito curtos
-        if len(text) < 5:
+        if len(text) < 5 or re.fullmatch(r"\d+", text):
             continue
-        # descartar se for apenas número
-        if re.fullmatch(r"\d+", text):
-            continue
-        # corresponder a renomadas
         if any(inst in text for inst in institution_list):
             filtered.append(text)
             continue
-        # corresponder a palavras-chave de instituição
         if any(kw in text for kw in INSTITUTION_KEYWORDS):
             filtered.append(text)
-    # remover duplicatas mantendo ordem
     return list(dict.fromkeys(filtered))
 
-def match_renowned_institution(text, institution_list):
-    """
-    Checa se algum nome da lista de instituições renomadas aparece no texto.
-    """
+def match_institution(text, institution_list):
     text = normalize_text(text)
-    for inst in institution_list:
-        if re.search(rf"\b{re.escape(inst)}\b", text):
-            return True
-    return False
+    return any(re.search(rf"\b{re.escape(inst)}\b", text) for inst in institution_list)
 
 # -------------------- Search and Processing --------------------
 if st.button("🔎 Run PubMed Search"):
     with st.spinner("Fetching articles..."):
         # ESearch
-        search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-        search_params = {
-            "db": "pubmed",
-            "retmax": str(max_results),
-            "retmode": "json",
-            "term": query
-        }
-        r = requests.get(search_url, params=search_params)
-        id_list = r.json()["esearchresult"].get("idlist", [])
+        r = requests.get(
+            "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+            params={"db":"pubmed","retmax":str(max_results),"retmode":"json","term":query}
+        )
+        id_list = r.json().get("esearchresult", {}).get("idlist", [])
 
         # EFetch
-        efetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-        params = {
-            "db": "pubmed",
-            "id": ",".join(id_list),
-            "retmode": "xml"
-        }
-        response = requests.get(efetch_url, params=params, timeout=20)
+        response = requests.get(
+            "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
+            params={"db":"pubmed","id":",".join(id_list),"retmode":"xml"},
+            timeout=20
+        )
 
         parsed_ok = parsed_fail = 0
         records = []
 
         def score_article(article, aff_parts, title_text):
-            score = 0
-            reasons = []
-            journal = article.findtext(".//Journal/Title", "").lower()
+            score = 0; reasons = []
+            journal = article.findtext(".//Journal/Title","").lower()
             if any(j in journal for j in journals):
-                score += 2; reasons.append("High-impact journal (+2)")
+                score+=2; reasons.append("High-impact journal (+2)")
             pub_types = [pt.text.lower() for pt in article.findall(".//PublicationType")]
-            valued_types = ["randomized controlled trial", "systematic review",
-                            "meta-analysis", "guideline", "practice guideline"]
-            if any(pt in valued_types for pt in pub_types):
-                score += 2; reasons.append("Valued publication type (+2)")
-            authors = article.findall(".//Author")
-            if len(authors) >= 5:
-                score += 1; reasons.append("Multiple authors (+1)")
-            if any(match_renowned_institution(aff, institutions) for aff in aff_parts):
-                score += 1; reasons.append("Prestigious institution (+1)")
+            valued = ["randomized controlled trial","systematic review",
+                     "meta-analysis","guideline","practice guideline"]
+            if any(pt in valued for pt in pub_types):
+                score+=2; reasons.append("Valued publication type (+2)")
+            if len(article.findall(".//Author"))>=5:
+                score+=1; reasons.append("Multiple authors (+1)")
+            if any(match_institution(aff, institutions) for aff in aff_parts):
+                score+=1; reasons.append("Prestigious institution (+1)")
             if any(kw in title_text for kw in hot_keywords):
-                score += 2; reasons.append("Hot keyword in title (+2)")
+                score+=2; reasons.append("Hot keyword in title (+2)")
             if article.find(".//GrantList") is not None:
-                score += 2; reasons.append("Has research funding (+2)")
+                score+=2; reasons.append("Has research funding (+2)")
             return score, "; ".join(reasons)
 
         def build_citation(article):
             authors = article.findall(".//Author")
             if authors:
-                first = authors[0]
-                last = first.findtext("LastName", "")
-                initials = first.findtext("Initials", "")
-                author_text = f"{last} {initials}" if last else "Unknown Author"
+                first=authors[0]
+                last=first.findtext("LastName","")
+                init=first.findtext("Initials","")
+                auth=f"{last} {init}" if last else "Unknown Author"
             else:
-                author_text = "Unknown Author"
-            year = article.findtext(".//PubDate/Year") or "n.d."
-            title = article.findtext(".//ArticleTitle", "").strip()
-            journal = article.findtext(".//Journal/Title", "")
-            return f"{author_text} et al. ({year}). {title}. {journal}."
+                auth="Unknown Author"
+            year=article.findtext(".//PubDate/Year") or "n.d."
+            title=article.findtext(".//ArticleTitle","").strip()
+            journal=article.findtext(".//Journal/Title","")
+            return f"{auth} et al. ({year}). {title}. {journal}."
 
         try:
-            root = ET.fromstring(response.content)
-            articles = root.findall(".//PubmedArticle")
-            for art in articles:
+            root=ET.fromstring(response.content)
+            for art in root.findall(".//PubmedArticle"):
                 try:
-                    pmid = art.findtext(".//PMID")
-                    title = art.findtext(".//ArticleTitle", "") or ""
-                    link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-                    journal = art.findtext(".//Journal/Title", "")
-                    date = art.findtext(".//PubDate/Year") or art.findtext(".//PubDate/MedlineDate") or "N/A"
+                    pmid=art.findtext(".//PMID")
+                    title=art.findtext(".//ArticleTitle","") or ""
+                    link=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+                    journal=art.findtext(".//Journal/Title","")
+                    date=art.findtext(".//PubDate/Year") or art.findtext(".//PubDate/MedlineDate") or "N/A"
 
-                    affs_raw = [a.text for a in art.findall(".//AffiliationInfo/Affiliation") if a is not None]
-                    aff_text = "; ".join(affs_raw)
-                    aff_parts = split_affiliations(aff_text, institutions)
+                    raw_affs=[a.text for a in art.findall(".//AffiliationInfo/Affiliation") if a.text]
+                    aff_text="; ".join(raw_affs)
+                    aff_parts=split_affiliations(aff_text, institutions)
 
-                    abstract_elems = art.findall(".//Abstract/AbstractText")
-                    abstract = "\n".join([e.text.strip() for e in abstract_elems if e.text]) if abstract_elems else "N/A"
+                    abstract_elems=art.findall(".//Abstract/AbstractText")
+                    abstract="\n".join(e.text.strip() for e in abstract_elems if e.text) if abstract_elems else "N/A"
 
-                    pub_types = [pt.text for pt in art.findall(".//PublicationType")]
-                    pub_types_text = "; ".join(pub_types)
-                    citation = build_citation(art)
+                    pub_types=[pt.text for pt in art.findall(".//PublicationType")]
+                    pub_types_text="; ".join(pub_types)
+                    citation=build_citation(art)
 
                     score, reason = score_article(art, aff_parts, normalize_text(title))
                     records.append({
@@ -174,101 +206,94 @@ if st.button("🔎 Run PubMed Search"):
                         "Date": date,
                         "Publication Types": pub_types_text,
                         "Affiliations": aff_text,
+                        "AffParts": aff_parts,
                         "Abstract": abstract,
                         "Citation": citation,
                         "Score": score,
                         "Why": reason
                     })
                     parsed_ok += 1
-                except Exception:
+                except:
                     parsed_fail += 1
-        except Exception:
+        except:
             st.error("Failed to parse XML from PubMed.")
 
         df = pd.DataFrame(records).sort_values("Score", ascending=False)
-        st.success(f"Found {len(id_list)} PMIDs. Parsed {parsed_ok} articles, failed on {parsed_fail}.")
+        st.success(f"Found {len(id_list)} PMIDs. Parsed {parsed_ok}, failed {parsed_fail}.")
 
         if not df.empty:
-            st.dataframe(
-                df[["Title", "Journal", "Date", "Publication Types", "Affiliations",
-                    "Score", "Why", "Citation", "Abstract"]],
-                use_container_width=True
-            )
-            csv = df.to_csv(index=False)
-            st.download_button("⬇️ Download CSV", data=csv,
-                               file_name="ranked_pubmed_results.csv", mime="text/csv")
+            st.dataframe(df.drop(columns="AffParts")[[
+                "Title","Journal","Date","Publication Types","Affiliations",
+                "Score","Why","Citation","Abstract"
+            ]], use_container_width=True)
 
-            # -------------------- Summary Section --------------------
+            st.download_button(
+                "⬇️ Download CSV",
+                data=df.drop(columns="AffParts").to_csv(index=False),
+                file_name="ranked_pubmed_results.csv",
+                mime="text/csv"
+            )
+
             st.header("📊 Summary Analysis")
 
             # Articles per Journal
             st.subheader("🔬 Articles per Journal")
-            journal_counts = df['Journal'].value_counts()
-            st.bar_chart(journal_counts)
-            st.dataframe(
-                journal_counts.reset_index()
-                              .rename(columns={"index": "Journal", "Journal": "Count"})
+            jc = df['Journal'].value_counts()
+            st.bar_chart(jc)
+            st.dataframe(jc.reset_index().rename(columns={"index":"Journal","Journal":"Count"}))
+
+            # Institutions Summary with "Others"
+            st.subheader("🏅 Institutions Summary")
+            sum_counter = Counter()
+            for parts in df["AffParts"]:
+                matched = {inst for inst in summary_institutions if any(inst in p for p in parts)}
+                if matched:
+                    for inst in matched:
+                        sum_counter[inst] += 1
+                else:
+                    sum_counter["Others"] += 1
+            sum_df = (
+                pd.DataFrame.from_dict(sum_counter, orient="index", columns=["Count"])
+                  .rename_axis("Institution")
+                  .sort_values("Count", ascending=False)
             )
+            st.bar_chart(sum_df)
+            st.dataframe(sum_df.reset_index())
 
-            # Renowned Institutions
-            st.subheader("🏅 Renowned Institutions Mentioned")
-            inst_counter_renowned = Counter()
-            for aff in df["Affiliations"]:
-                for inst in institutions:
-                    if inst in normalize_text(aff):
-                        inst_counter_renowned[inst] += 1
-            if inst_counter_renowned:
-                inst_df_renowned = (
-                    pd.DataFrame.from_dict(inst_counter_renowned, orient="index", columns=["Count"])
-                      .rename_axis("Institution")
-                      .sort_values("Count", ascending=False)
-                )
-                st.bar_chart(inst_df_renowned)
-                st.dataframe(inst_df_renowned.reset_index())
-            else:
-                st.info("No renowned institutions were mentioned in the articles.")
-
-            # All Institutions
+            # All Institutions Mentioned
             st.subheader("🌍 All Institutions Mentioned")
-            all_affs = []
-            for aff in df["Affiliations"]:
-                all_affs.extend(split_affiliations(aff, institutions))
-            all_counts = Counter(all_affs)
-            if all_counts:
-                inst_df_all = (
-                    pd.DataFrame.from_dict(all_counts, orient="index", columns=["Count"])
-                      .rename_axis("Institution")
-                      .sort_values("Count", ascending=False)
-                )
-                st.bar_chart(inst_df_all)
-                st.dataframe(inst_df_all.reset_index())
-            else:
-                st.info("No institution-like terms found in affiliations.")
+            all_counts = Counter()
+            for parts in df["AffParts"]:
+                for p in parts:
+                    all_counts[p] += 1
+            all_df = (
+                pd.DataFrame.from_dict(all_counts, orient="index", columns=["Count"])
+                  .rename_axis("Institution")
+                  .sort_values("Count", ascending=False)
+            )
+            st.bar_chart(all_df)
+            st.dataframe(all_df.reset_index())
 
             # Publication Types
             st.subheader("📄 Articles per Publication Type")
-            pubtype_list = df["Publication Types"].str.split("; ").explode()
-            pubtype_counts = pubtype_list.value_counts()
-            st.bar_chart(pubtype_counts)
-            st.dataframe(
-                pubtype_counts.reset_index()
-                              .rename(columns={"index": "Publication Type", 0: "Count"})
-            )
+            pt = df["Publication Types"].str.split("; ").explode().value_counts()
+            st.bar_chart(pt)
+            st.dataframe(pt.reset_index().rename(columns={"index":"Publication Type",0:"Count"}))
 
             # Hot Keywords in Titles
             st.subheader("🔥 Articles with Hot Keywords in Title")
-            hot_counter = Counter()
+            hk = Counter()
             for title in df["Title"]:
                 t = normalize_text(title)
                 for kw in hot_keywords:
                     if kw in t:
-                        hot_counter[kw] += 1
-            hot_df = (
-                pd.DataFrame.from_dict(hot_counter, orient="index", columns=["Count"])
+                        hk[kw] += 1
+            hk_df = (
+                pd.DataFrame.from_dict(hk, orient="index", columns=["Count"])
                   .rename_axis("Hot Keyword")
                   .sort_values("Count", ascending=False)
             )
-            st.bar_chart(hot_df)
-            st.dataframe(hot_df.reset_index())
+            st.bar_chart(hk_df)
+            st.dataframe(hk_df.reset_index())
         else:
-            st.warning("No valid articles found to display.")
+            st.warning("No valid articles to display.")
