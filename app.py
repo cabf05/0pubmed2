@@ -197,6 +197,13 @@ if st.button("🔎 Run PubMed Search"):
                     pub_types_text = "; ".join(pub_types)
                     citation = build_citation(art)
 
+                    # ✅ Novos dados
+                    entry_date = art.findtext(".//DateRevised/Year") or "N/A"
+                    mesh_terms = "; ".join([m.text for m in art.findall(".//MeshHeading/DescriptorName") if m.text])
+                    chemicals = "; ".join([c.text for c in art.findall(".//Chemical/NameOfSubstance") if c.text])
+                    keywords = "; ".join([k.text for k in art.findall(".//Keyword") if k.text])
+                    genes = "; ".join([g.text for g in art.findall(".//GeneSymbol") if g.text])
+
                     score, reason = score_article(art, aff_parts, normalize_text(title))
                     records.append({
                         "Title": title,
@@ -209,7 +216,12 @@ if st.button("🔎 Run PubMed Search"):
                         "Abstract": abstract,
                         "Citation": citation,
                         "Score": score,
-                        "Why": reason
+                        "Why": reason,
+                        "PubMed Entry Date": entry_date,
+                        "Mesh Terms": mesh_terms,
+                        "Chemical Substances": chemicals,
+                        "Author Keywords": keywords,
+                        "Genes/Proteins": genes
                     })
                     parsed_ok += 1
                 except:
@@ -223,7 +235,8 @@ if st.button("🔎 Run PubMed Search"):
         if not df.empty:
             st.dataframe(df.drop(columns="AffParts")[[
                 "Title","Journal","Date","Publication Types","Affiliations",
-                "Score","Why","Citation","Abstract"
+                "Score","Why","Citation","Abstract",
+                "PubMed Entry Date","Mesh Terms","Chemical Substances","Author Keywords","Genes/Proteins"
             ]], use_container_width=True)
             st.download_button(
                 "⬇️ Download CSV",
