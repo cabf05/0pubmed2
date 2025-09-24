@@ -243,7 +243,7 @@ if st.button("🔎 Run PubMed Search"):
                                 d = node.findtext('Day')
                                 mn = month_to_num(m)
                                 if y and mn and d:
-                                    pubmed_entry_date = f"{d.zfill(2)}/{mn}/{y}"
+                                    pubmed_entry_date = f"{mn}/{d.zfill(2)}/{y}"
                                 elif y and mn:
                                     pubmed_entry_date = f"{mn}/{y}"
                                 elif y:
