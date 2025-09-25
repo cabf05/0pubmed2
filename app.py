@@ -130,9 +130,7 @@ def month_to_num(m):
     m = m.strip()
     if m.isdigit():
         return m.zfill(2)
-    # try month abbreviations (Jan, Feb...) or full names
     try:
-        # normalize to first 3 letters titlecase, match against calendar.month_abbr
         m3 = m[:3].title()
         for i in range(1,13):
             if calendar.month_abbr[i] == m3 or calendar.month_name[i].lower().startswith(m.lower()):
@@ -140,6 +138,18 @@ def month_to_num(m):
     except:
         pass
     return None
+
+def format_date(y, m=None, d=None):
+    mn = month_to_num(m) if m else None
+    day = d.zfill(2) if d else "01"
+    if y and mn and d:
+        return f"{y}-{mn}-{day}"
+    elif y and mn:
+        return f"{y}-{mn}-01"
+    elif y:
+        return f"{y}-01-01"
+    else:
+        return "N/A"
 
 # -------------------- Scoring & Helpers --------------------
 def score_article(article, aff_parts, title_text):
@@ -170,7 +180,6 @@ def build_citation(article):
         auth = f"{last} {init}" if last else "Unknown Author"
     else:
         auth = "Unknown Author"
-    # try several places for year
     year = article.findtext(".//PubDate/Year") or article.findtext(".//PubDate/MedlineDate") or "n.d."
     title = (article.findtext(".//ArticleTitle","") or "").strip()
     journal = article.findtext(".//Journal/Title","") or ""
@@ -217,7 +226,14 @@ if st.button("🔎 Run PubMed Search"):
                             title = art.findtext(".//ArticleTitle","") or ""
                             link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
                             journal = art.findtext(".//Journal/Title","") or ""
-                            date = art.findtext(".//PubDate/Year") or art.findtext(".//PubDate/MedlineDate") or "N/A"
+                            # --- Publication Date ---
+                            pubdate_node = art.find(".//PubDate")
+                            y, m, d = None, None, None
+                            if pubdate_node is not None:
+                                y = pubdate_node.findtext("Year")
+                                m = pubdate_node.findtext("Month")
+                                d = pubdate_node.findtext("Day")
+                            date = format_date(y, m, d)
 
                             raw_affs = [a.text for a in art.findall(".//AffiliationInfo/Affiliation") if a.text]
                             aff_text = "; ".join(raw_affs)
@@ -230,35 +246,19 @@ if st.button("🔎 Run PubMed Search"):
                             pub_types_text = "; ".join(pub_types)
                             citation = build_citation(art)
 
-                            # --- PubMed Entry Date (full) ---
+                            # --- PubMed Entry Date ---
                             pubmed_entry_date = "N/A"
-                            # try to find the PubMedPubDate with PubStatus="pubmed"
                             node = art.find('.//PubmedData/History/PubMedPubDate[@PubStatus="pubmed"]')
                             if node is None:
-                                # fallback to any PubMedPubDate under History
                                 node = art.find('.//PubmedData/History/PubMedPubDate')
                             if node is not None:
                                 y = node.findtext('Year')
                                 m = node.findtext('Month')
                                 d = node.findtext('Day')
-                                mn = month_to_num(m)
-                                if y and mn and d:
-                                    pubmed_entry_date = f"{mn}/{d.zfill(2)}/{y}"
-                                elif y and mn:
-                                    pubmed_entry_date = f"{mn}/{y}"
-                                elif y:
-                                    pubmed_entry_date = y
+                                pubmed_entry_date = format_date(y, m, d)
 
                             # --- Mesh Terms ---
-                            mesh_terms = []
-                            for desc in art.findall(".//MeshHeading/DescriptorName"):
-                                if desc is not None and (desc.text or "").strip():
-                                    mesh_terms.append(desc.text.strip())
-                            # also include qualifier names (optional)
-                            for qual in art.findall(".//MeshHeading/QualifierName"):
-                                if qual is not None and (qual.text or "").strip():
-                                    # qualifier could duplicate descriptor; include optionally
-                                    pass
+                            mesh_terms = [desc.text.strip() for desc in art.findall(".//MeshHeading/DescriptorName") if desc.text and desc.text.strip()]
 
                             # --- Chemical Substances ---
                             chemicals = [c.text.strip() for c in art.findall(".//Chemical/NameOfSubstance") if c.text and c.text.strip()]
@@ -314,7 +314,6 @@ if st.button("🔎 Run PubMed Search"):
             st.success(f"Found {len(id_list)} PMIDs. Parsed {parsed_ok}, failed {parsed_fail}.")
 
             if not df.empty:
-                # show dataframe (hide AffParts internal column)
                 show_cols = [
                     "Title","Journal","Date","Publication Types","Affiliations",
                     "Score","Why","Citation","Abstract",
@@ -328,15 +327,16 @@ if st.button("🔎 Run PubMed Search"):
                     mime="text/csv"
                 )
 
+                # -------------------- Summary Analysis --------------------
                 st.header("📊 Summary Analysis")
 
-                # 🔬 Articles per Journal
+                # Articles per Journal
                 st.subheader("🔬 Articles per Journal")
                 jc = df['Journal'].value_counts()
                 st.bar_chart(jc)
                 st.dataframe(jc.reset_index().rename(columns={"index":"Journal","Journal":"Count"}))
 
-                # 🏅 Renowned Institutions Summary
+                # Renowned Institutions
                 st.subheader("🏅 Renowned Institutions Summary")
                 ren_counter = Counter()
                 for parts in df["AffParts"]:
@@ -372,13 +372,13 @@ if st.button("🔎 Run PubMed Search"):
                 st.bar_chart(sel_df)
                 st.dataframe(sel_df.reset_index())
 
-                # 📄 Publication Types
+                # Publication Types
                 st.subheader("📄 Articles per Publication Type")
                 pt = df["Publication Types"].str.split("; ").explode().value_counts()
                 st.bar_chart(pt)
                 st.dataframe(pt.reset_index().rename(columns={"index":"Publication Type",0:"Count"}))
 
-                # 🔥 Hot Keywords in Titles
+                # Hot Keywords in Titles
                 st.subheader("🔥 Articles with Hot Keywords in Title")
                 hk = Counter()
                 for title in df["Title"]:
