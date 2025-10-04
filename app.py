@@ -30,56 +30,21 @@ inst_input = st.text_area("Renowned Institutions (one per line)", value=default_
 institutions = [i.strip().lower() for i in inst_input.splitlines() if i.strip()]
 
 default_summary = "\n".join([
-    "Harvard",
-    "Stanford",
-    "Massachusetts Institute of Technology",
-    "University of Cambridge",
-    "University of Oxford",
-    "University of California, Berkeley",
-    "Princeton University",
-    "Yale University",
-    "University of Chicago",
-    "Columbia",
-    "California Institute of Technology",
-    "University College London",
-    "ETH Zurich",
-    "Imperial College London",
-    "University of Toronto",
-    "Tsinghua University",
-    "Peking University",
-    "National University of Singapore",
-    "University of Melbourne",
-    "University of Tokyo",
-    "Kyoto University",
-    "Seoul National University",
-    "University of Hong Kong",
-    "University of British Columbia",
-    "University of Sydney",
-    "University of Edinburgh",
-    "University of Manchester",
-    "Ludwig Maximilian University of Munich",
-    "University of Copenhagen",
-    "University of Amsterdam",
-    "University of Zurich",
-    "McGill University",
-    "King's College London",
-    "University of Illinois Urbana-Champaign",
-    "École Polytechnique Fédérale de Lausanne",
-    "University of Pennsylvania",
-    "Cornell University",
-    "Johns Hopkins",
-    "Duke University",
-    "University of California, Los Angeles",
-    "University of Michigan",
-    "University of Texas at Austin",
-    "Washington University in St. Louis",
-    "University of California, San Diego",
-    "University of California, Davis",
-    "University of Washington",
-    "University of Wisconsin–Madison",
-    "New York University",
-    "University of North Carolina at Chapel Hill",
-    "National Taiwan University"
+    "Harvard","Stanford","Massachusetts Institute of Technology","University of Cambridge",
+    "University of Oxford","University of California, Berkeley","Princeton University",
+    "Yale University","University of Chicago","Columbia","California Institute of Technology",
+    "University College London","ETH Zurich","Imperial College London","University of Toronto",
+    "Tsinghua University","Peking University","National University of Singapore","University of Melbourne",
+    "University of Tokyo","Kyoto University","Seoul National University","University of Hong Kong",
+    "University of British Columbia","University of Sydney","University of Edinburgh",
+    "University of Manchester","Ludwig Maximilian University of Munich","University of Copenhagen",
+    "University of Amsterdam","University of Zurich","McGill University","King's College London",
+    "University of Illinois Urbana-Champaign","École Polytechnique Fédérale de Lausanne",
+    "University of Pennsylvania","Cornell University","Johns Hopkins","Duke University",
+    "University of California, Los Angeles","University of Michigan","University of Texas at Austin",
+    "Washington University in St. Louis","University of California, San Diego","University of California, Davis",
+    "University of Washington","University of Wisconsin–Madison","New York University",
+    "University of North Carolina at Chapel Hill","National Taiwan University"
 ])
 summary_input = st.text_area(
     "Institutions for Summary Analysis (one per line)",
@@ -185,6 +150,16 @@ def build_citation(article):
     journal = article.findtext(".//Journal/Title","") or ""
     return f"{auth} et al. ({year}). {title}. {journal}."
 
+# helper for history dates
+def extract_history_date(art, status):
+    node = art.find(f'.//PubmedData/History/PubMedPubDate[@PubStatus="{status}"]')
+    if node is not None:
+        y = node.findtext('Year')
+        m = node.findtext('Month')
+        d = node.findtext('Day')
+        return format_date(y, m, d)
+    return "N/A"
+
 # -------------------- Search and Processing --------------------
 if st.button("🔎 Run PubMed Search"):
     with st.spinner("Fetching articles..."):
@@ -246,19 +221,54 @@ if st.button("🔎 Run PubMed Search"):
                             pub_types_text = "; ".join(pub_types)
                             citation = build_citation(art)
 
-                            # --- PubMed Entry Date ---
-                            pubmed_entry_date = "N/A"
-                            node = art.find('.//PubmedData/History/PubMedPubDate[@PubStatus="pubmed"]')
-                            if node is None:
-                                node = art.find('.//PubmedData/History/PubMedPubDate')
-                            if node is not None:
-                                y = node.findtext('Year')
-                                m = node.findtext('Month')
-                                d = node.findtext('Day')
-                                pubmed_entry_date = format_date(y, m, d)
+                            # --- Entry Date ---
+                            pubmed_entry_date = extract_history_date(art, "pubmed")
 
-                            # --- Mesh Terms ---
+                            # --- Extra Dates ---
+                            date_create = extract_history_date(art, "received")
+                            date_completion = extract_history_date(art, "accepted")
+                            date_mesh = extract_history_date(art, "medline")
+
+                            # --- First Author ---
+                            first_author = "N/A"
+                            fa = art.find(".//Author")
+                            if fa is not None:
+                                last = fa.findtext("LastName", "")
+                                init = fa.findtext("Initials", "")
+                                first_author = f"{last} {init}".strip() or "N/A"
+
+                            # --- Issue ---
+                            issue = art.findtext(".//JournalIssue/Issue", "N/A")
+
+                            # --- MeSH Terms ---
                             mesh_terms = [desc.text.strip() for desc in art.findall(".//MeshHeading/DescriptorName") if desc.text and desc.text.strip()]
+                            mesh_major = []
+                            mesh_subheading = []
+                            for mh in art.findall(".//MeshHeading"):
+                                desc = mh.find("DescriptorName")
+                                if desc is not None and desc.attrib.get("MajorTopicYN") == "Y":
+                                    mesh_major.append(desc.text.strip())
+                                for q in mh.findall("QualifierName"):
+                                    txt = (q.text or "").strip()
+                                    if txt:
+                                        mesh_subheading.append(txt)
+
+                            # --- Other Terms ---
+                            other_terms = [ot.text.strip() for ot in art.findall(".//OtherTerm") if ot.text]
+
+                            # --- Pharmacological Actions ---
+                            pharma_actions = [p.text.strip() for p in art.findall(".//PharmAction") if p.text]
+
+                            # --- Supplementary Concepts ---
+                            suppl_concepts = [s.text.strip() for s in art.findall(".//SupplMeshName") if s.text]
+
+                            # --- Grants ---
+                            grants = []
+                            for g in art.findall(".//Grant"):
+                                grant_id = g.findtext("GrantID", "")
+                                agency = g.findtext("Agency", "")
+                                country = g.findtext("Country", "")
+                                grants.append(f"{grant_id} ({agency}, {country})")
 
                             # --- Chemical Substances ---
                             chemicals = [c.text.strip() for c in art.findall(".//Chemical/NameOfSubstance") if c.text and c.text.strip()]
@@ -290,7 +300,12 @@ if st.button("🔎 Run PubMed Search"):
                                 "Title": title,
                                 "Link": link,
                                 "Journal": journal,
+                                "Issue": issue,
                                 "Date": date,
+                                "Date - Create": date_create,
+                                "Date - Completion": date_completion,
+                                "Date - MeSH": date_mesh,
+                                "Author - First": first_author,
                                 "Publication Types": pub_types_text,
                                 "Affiliations": aff_text,
                                 "AffParts": aff_parts,
@@ -299,7 +314,13 @@ if st.button("🔎 Run PubMed Search"):
                                 "Score": score,
                                 "Why": reason,
                                 "PubMed Entry Date": pubmed_entry_date,
-                                "Mesh Terms": "; ".join(mesh_terms),
+                                "MeSH Terms": "; ".join(mesh_terms),
+                                "MeSH Major Topic": "; ".join(mesh_major),
+                                "MeSH Subheading": "; ".join(mesh_subheading),
+                                "Other Term": "; ".join(other_terms),
+                                "Pharmacological Action": "; ".join(pharma_actions),
+                                "Supplementary Concept": "; ".join(suppl_concepts),
+                                "Grants and Funding": "; ".join(grants),
                                 "Chemical Substances": "; ".join(chemicals),
                                 "Author Keywords": "; ".join(keywords),
                                 "Genes/Proteins": "; ".join(genes)
@@ -315,9 +336,12 @@ if st.button("🔎 Run PubMed Search"):
 
             if not df.empty:
                 show_cols = [
-                    "Title","Journal","Date","Publication Types","Affiliations",
+                    "Title","Journal","Issue","Date","Date - Create","Date - Completion","Date - MeSH",
+                    "Author - First","Publication Types","Affiliations",
                     "Score","Why","Citation","Abstract",
-                    "PubMed Entry Date","Mesh Terms","Chemical Substances","Author Keywords","Genes/Proteins","Link"
+                    "PubMed Entry Date","MeSH Major Topic","MeSH Subheading",
+                    "MeSH Terms","Other Term","Pharmacological Action","Supplementary Concept",
+                    "Grants and Funding","Chemical Substances","Author Keywords","Genes/Proteins","Link"
                 ]
                 st.dataframe(df.drop(columns="AffParts")[show_cols], use_container_width=True)
                 st.download_button(
@@ -388,10 +412,8 @@ if st.button("🔎 Run PubMed Search"):
                             hk[kw] += 1
                 hk_df = (
                     pd.DataFrame.from_dict(hk, orient="index", columns=["Count"])
-                      .rename_axis("Hot Keyword")
+                      .rename_axis("Keyword")
                       .sort_values("Count", ascending=False)
                 )
                 st.bar_chart(hk_df)
                 st.dataframe(hk_df.reset_index())
-            else:
-                st.warning("No valid articles to display.")
